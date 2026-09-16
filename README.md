@@ -2,9 +2,15 @@
 
 Official implementation workspace for the manuscript **“DECoNet: Dual-Evidence Collaborative Network for Robust Photovoltaic EL Defect Detection under Missing Annotations”** (ICASSP 2027 submission version dated 2026-09-16).
 
-This repository contains only the implementation and evaluation code needed by that manuscript. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
+This repository contains the implementation and evaluation code needed by that manuscript, together with its five figures. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
 
 The vendored YOLOv12 runtime is limited to the object-detection path required by DECoNet. Unrelated upstream tasks, model-zoo configurations, demos, tracking, HUB integration, sample assets, and solution applications have been removed.
+
+## Method overview
+
+![Comparison of conventional teacher-student learning and DECoNet](docs/figures/overview_story.png)
+
+**Figure 1.** Teacher-student learning frameworks: (a) conventional teacher-student learning; (b) DECoNet with a fixed normal-reference anomaly prior.
 
 ## Method coverage
 
@@ -17,6 +23,12 @@ The code implements the components reported in the paper:
 - inference through only the WSConv backbone, shared neck, and main detection head.
 
 The detector is based on YOLOv12n at upstream commit `d3cbe10`. The inherited code remains under the AGPL-3.0 license; see [LICENSE](LICENSE).
+
+### Architecture
+
+![DECoNet architecture and the WSConv and TGFA modules](docs/figures/architecture.png)
+
+**Figure 2.** Architecture of DECoNet: (a) overall detection architecture; (b) WSConv module; (c) TGFA module. TGFA and the auxiliary detection head are used only during training.
 
 ## Paper configuration
 
@@ -35,6 +47,14 @@ The detector is based on YOLOv12n at upstream commit `d3cbe10`. The inherited co
 | SLM coefficient / auxiliary weight | 0.10 / 0.25 |
 
 The paper reports **95.65 mAP50**, **70.85 mAP50:95**, **93.29 precision**, and **92.14 recall** on augmented PVEL-AD. Its inference graph has **2.28M parameters** and **5.67 GFLOPs** at 640 × 640, using two FLOPs per multiply-accumulate.
+
+## Qualitative results
+
+![Ground truth and defect detection results from DECoNet and comparison methods](docs/figures/qualitative.png)
+
+**Figure 5.** Detection examples on augmented PVEL-AD: (a,b) small defects, (c,d) coexisting classes, and (e,f) grid-like backgrounds. Each pair shows bounding boxes (1) and box-derived binary masks (2); rows identify ground truth and compared methods.
+
+See [additional visualizations](docs/visualizations.md) for the normal-reference anomaly maps (Figure 3) and WSConv feature responses (Figure 4). All five original figures are available in [docs/figures](docs/figures).
 
 ## Installation
 
@@ -123,6 +143,8 @@ Only training boxes are removed; validation and test annotations must remain unc
 
 ## Repository map
 
+- `docs/figures/`: the five original paper figures.
+- `docs/visualizations.md`: anomaly-prior and WSConv visualizations.
 - `configs/models/yolo12n-deconet.yaml`: paper model architecture.
 - `ultralytics/nn/modules/wscdown.py`: WSConv.
 - `ultralytics/nn/modules/tgfa.py`: TGFA.
