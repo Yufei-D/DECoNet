@@ -2,7 +2,7 @@
 
 Official implementation workspace for the manuscript **“DECoNet: Dual-Evidence Collaborative Network for Robust Photovoltaic EL Defect Detection under Missing Annotations”** (ICASSP 2027 submission version dated 2026-09-16).
 
-This repository contains the implementation and evaluation code needed by that manuscript, together with its five figures. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
+This repository contains the implementation and evaluation code needed by that manuscript, together with its method overview and architecture figures. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
 
 The vendored YOLOv12 runtime is limited to the object-detection path required by DECoNet. Unrelated upstream tasks, model-zoo configurations, demos, tracking, HUB integration, sample assets, and solution applications have been removed.
 
@@ -47,14 +47,6 @@ The detector is based on YOLOv12n at upstream commit `d3cbe10`. The inherited co
 | SLM coefficient / auxiliary weight | 0.10 / 0.25 |
 
 The paper reports **95.65 mAP50**, **70.85 mAP50:95**, **93.29 precision**, and **92.14 recall** on augmented PVEL-AD. Its inference graph has **2.28M parameters** and **5.67 GFLOPs** at 640 × 640, using two FLOPs per multiply-accumulate.
-
-## Qualitative results
-
-![Ground truth and defect detection results from DECoNet and comparison methods](docs/figures/qualitative.png)
-
-**Figure 5.** Detection examples on augmented PVEL-AD: (a,b) small defects, (c,d) coexisting classes, and (e,f) grid-like backgrounds. Each pair shows bounding boxes (1) and box-derived binary masks (2); rows identify ground truth and compared methods.
-
-See [additional visualizations](docs/visualizations.md) for the normal-reference anomaly maps (Figure 3) and WSConv feature responses (Figure 4). All five original figures are available in [docs/figures](docs/figures).
 
 ## Installation
 
@@ -143,8 +135,7 @@ Only training boxes are removed; validation and test annotations must remain unc
 
 ## Repository map
 
-- `docs/figures/`: the five original paper figures.
-- `docs/visualizations.md`: anomaly-prior and WSConv visualizations.
+- `docs/figures/`: the method overview and architecture figures (Figures 1 and 2).
 - `configs/models/yolo12n-deconet.yaml`: paper model architecture.
 - `ultralytics/nn/modules/wscdown.py`: WSConv.
 - `ultralytics/nn/modules/tgfa.py`: TGFA.
