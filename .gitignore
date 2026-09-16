@@ -1,0 +1,36 @@
+# Python and editor artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+.env
+
+# Experiment outputs
+runs/
+outputs/
+wandb/
+
+# Datasets and generated annotations/maps
+/data/
+/datasets/
+M_heatmaps/
+labels_missing*/
+*.npy
+*.npz
+*.cache
+
+# Model weights, prototype banks, and exported engines
+weights/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.pkl
