@@ -131,16 +131,6 @@ def on_predict_end(predictor):
 # Exporter callbacks ---------------------------------------------------------------------------------------------------
 
 
-def on_export_start(exporter):
-    """Called when the model export starts."""
-    pass
-
-
-def on_export_end(exporter):
-    """Called when the model export ends."""
-    pass
-
-
 default_callbacks = {
     # Run in trainer
     "on_pretrain_routine_start": [on_pretrain_routine_start],
@@ -168,9 +158,6 @@ default_callbacks = {
     "on_predict_postprocess_end": [on_predict_postprocess_end],
     "on_predict_batch_end": [on_predict_batch_end],
     "on_predict_end": [on_predict_end],
-    # Run in exporter
-    "on_export_start": [on_export_start],
-    "on_export_end": [on_export_end],
 }
 
 

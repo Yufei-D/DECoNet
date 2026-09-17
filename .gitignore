@@ -34,3 +34,4 @@ weights/
 *.torchscript
 *.tflite
 *.pkl
+build/

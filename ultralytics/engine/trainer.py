@@ -13,16 +13,15 @@ import subprocess
 import time
 import warnings
 from copy import copy, deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
-from torch import distributed as dist
 from torch import nn, optim
 
 from ultralytics.cfg import get_cfg, get_save_dir
-from ultralytics.data.utils import check_cls_dataset, check_det_dataset
+from ultralytics.data.utils import check_det_dataset
 from ultralytics.nn.tasks import attempt_load_one_weight, attempt_load_weights
 from ultralytics.utils import (
     DEFAULT_CFG,
@@ -37,9 +36,7 @@ from ultralytics.utils import (
     emojis,
     yaml_save,
 )
-from ultralytics.utils.autobatch import check_train_batch_size
 from ultralytics.utils.checks import check_amp, check_file, check_imgsz, check_model_file_from_stem, print_args
-from ultralytics.utils.dist import ddp_cleanup, generate_ddp_command
 from ultralytics.utils.files import get_latest_run
 from ultralytics.utils.torch_utils import (
     TORCH_2_4,
@@ -147,9 +144,6 @@ class BaseTrainer:
         self.csv = self.save_dir / "results.csv"
         self.plot_idx = [0, 1, 2]
 
-        # HUB
-        self.hub_session = None
-
         # Callbacks
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
 
@@ -167,43 +161,14 @@ class BaseTrainer:
             callback(self)
 
     def train(self):
-        """Allow device='', device=None on Multi-GPU systems to default to device=0."""
-        if isinstance(self.args.device, str) and len(self.args.device):  # i.e. device='0' or device='0,1,2,3'
-            world_size = len(self.args.device.split(","))
-        elif isinstance(self.args.device, (tuple, list)):  # i.e. device=[0, 1, 2, 3] (multi-GPU from CLI is list)
-            world_size = len(self.args.device)
-        elif self.args.device in {"cpu", "mps"}:  # i.e. device='cpu' or 'mps'
-            world_size = 0
-        elif torch.cuda.is_available():  # i.e. device=None or device='' or device=number
-            world_size = 1  # default to device 0
-        else:  # i.e. device=None or device=''
-            world_size = 0
+        """Train on one device using an explicitly specified batch size."""
+        if int(self.batch_size) != self.batch_size or self.batch_size < 1:
+            raise ValueError("batch must be a positive integer")
+        devices = str(self.args.device).split(",")
+        if len(devices) > 1 or LOCAL_RANK != -1:
+            raise ValueError("DECoNet training uses a single device")
+        self._do_train()
 
-        # Run subprocess if DDP training, else train normally
-        if world_size > 1 and "LOCAL_RANK" not in os.environ:
-            # Argument checks
-            if self.args.rect:
-                LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with Multi-GPU training, setting 'rect=False'")
-                self.args.rect = False
-            if self.args.batch < 1.0:
-                LOGGER.warning(
-                    "WARNING ⚠️ 'batch<1' for AutoBatch is incompatible with Multi-GPU training, setting "
-                    "default 'batch=16'"
-                )
-                self.args.batch = 16
-
-            # Command
-            cmd, file = generate_ddp_command(world_size, self)
-            try:
-                LOGGER.info(f"{colorstr('DDP:')} debug command {' '.join(cmd)}")
-                subprocess.run(cmd, check=True)
-            except Exception as e:
-                raise e
-            finally:
-                ddp_cleanup(self, str(file))
-
-        else:
-            self._do_train(world_size)
 
     def _setup_scheduler(self):
         """Initialize training learning rate scheduler."""
@@ -213,18 +178,6 @@ class BaseTrainer:
             self.lf = lambda x: max(1 - x / self.epochs, 0) * (1.0 - self.args.lrf) + self.args.lrf  # linear
         self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=self.lf)
 
-    def _setup_ddp(self, world_size):
-        """Initializes and sets the DistributedDataParallel parameters for training."""
-        torch.cuda.set_device(RANK)
-        self.device = torch.device("cuda", RANK)
-        # LOGGER.info(f'DDP info: RANK {RANK}, WORLD_SIZE {world_size}, DEVICE {self.device}')
-        os.environ["TORCH_NCCL_BLOCKING_WAIT"] = "1"  # set to enforce timeout
-        dist.init_process_group(
-            backend="nccl" if dist.is_nccl_available() else "gloo",
-            timeout=timedelta(seconds=10800),  # 3 hours
-            rank=RANK,
-            world_size=world_size,
-        )
 
     def _setup_train(self, world_size):
         """Builds dataloaders and optimizer on correct rank process."""
@@ -262,15 +215,10 @@ class BaseTrainer:
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
             self.amp = torch.tensor(check_amp(self.model), device=self.device)
             callbacks.default_callbacks = callbacks_backup  # restore callbacks
-        if RANK > -1 and world_size > 1:  # DDP
-            dist.broadcast(self.amp, src=0)  # broadcast the tensor from rank 0 to all other ranks (returns None)
         self.amp = bool(self.amp)  # as boolean
         self.scaler = (
             torch.amp.GradScaler("cuda", enabled=self.amp) if TORCH_2_4 else torch.cuda.amp.GradScaler(enabled=self.amp)
         )
-        if world_size > 1:
-            self.model = nn.parallel.DistributedDataParallel(self.model, device_ids=[RANK], find_unused_parameters=True)
-            self.set_model_attributes()  # set again after DDP wrapper
 
         # Check imgsz
         gs = max(int(self.model.stride.max() if hasattr(self.model, "stride") else 32), 32)  # grid size (max stride)
@@ -278,8 +226,6 @@ class BaseTrainer:
         self.stride = gs  # for multiscale training
 
         # Batch size
-        if self.batch_size < 1 and RANK == -1:  # single-GPU only, estimate best batch size
-            self.args.batch = self.batch_size = self.auto_batch()
 
         # Dataloaders
         batch_size = self.batch_size // max(world_size, 1)
@@ -324,8 +270,6 @@ class BaseTrainer:
 
     def _do_train(self, world_size=1):
         """Train completed, evaluate and plot if specified by arguments."""
-        if world_size > 1:
-            self._setup_ddp(world_size)
         self._setup_train(world_size)
 
         nb = len(self.train_loader)  # number of batches
@@ -354,8 +298,6 @@ class BaseTrainer:
                 self.scheduler.step()
 
             self.model.train()
-            if RANK != -1:
-                self.train_loader.sampler.set_epoch(epoch)
             pbar = enumerate(self.train_loader)
             # Update dataloader attributes (optional)
             if epoch == (self.epochs - self.args.close_mosaic):
@@ -385,8 +327,6 @@ class BaseTrainer:
                 with autocast(self.amp):
                     batch = self.preprocess_batch(batch)
                     self.loss, self.loss_items = self.model(batch)
-                    if RANK != -1:
-                        self.loss *= world_size
                     self.tloss = (
                         (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None else self.loss_items
                     )
@@ -402,10 +342,6 @@ class BaseTrainer:
                     # Timed stopping
                     if self.args.time:
                         self.stop = (time.time() - self.train_time_start) > (self.args.time * 3600)
-                        if RANK != -1:  # if DDP training
-                            broadcast_list = [self.stop if RANK == 0 else None]
-                            dist.broadcast_object_list(broadcast_list, 0)  # broadcast 'stop' to all ranks
-                            self.stop = broadcast_list[0]
                         if self.stop:  # training time exceeded
                             break
 
@@ -461,10 +397,6 @@ class BaseTrainer:
             self._clear_memory()
 
             # Early Stopping
-            if RANK != -1:  # if DDP training
-                broadcast_list = [self.stop if RANK == 0 else None]
-                dist.broadcast_object_list(broadcast_list, 0)  # broadcast 'stop' to all ranks
-                self.stop = broadcast_list[0]
             if self.stop:
                 break  # must break all DDP ranks
             epoch += 1
@@ -480,15 +412,6 @@ class BaseTrainer:
         self._clear_memory()
         self.run_callbacks("teardown")
 
-    def auto_batch(self, max_num_obj=0):
-        """Get batch size by calculating memory occupation of model."""
-        return check_train_batch_size(
-            model=self.model,
-            imgsz=self.args.imgsz,
-            amp=self.amp,
-            batch=self.batch_size,
-            max_num_obj=max_num_obj,
-        )  # returns batch size
 
     def _get_memory(self):
         """Get accelerator memory utilization in GB."""
@@ -558,14 +481,7 @@ class BaseTrainer:
         Returns None if data format is not recognized.
         """
         try:
-            if self.args.task == "classify":
-                data = check_cls_dataset(self.args.data)
-            elif self.args.data.split(".")[-1] in {"yaml", "yml"} or self.args.task in {
-                "detect",
-                "segment",
-                "pose",
-                "obb",
-            }:
+            if self.args.data.split(".")[-1] in {"yaml", "yml"}:
                 data = check_det_dataset(self.args.data)
                 if "yaml_file" in data:
                     self.args.data = data["yaml_file"]  # for validating 'yolo train data=url.zip' usage

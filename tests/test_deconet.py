@@ -1,6 +1,7 @@
 from copy import deepcopy
 from pathlib import Path
 import subprocess
+import tempfile
 from types import SimpleNamespace
 import unittest
 
@@ -12,6 +13,25 @@ MODEL_CFG = ROOT / "configs" / "models" / "yolo12n-deconet.yaml"
 
 
 class DECoNetTests(unittest.TestCase):
+    def test_detection_results_plot_and_save_boxes(self):
+        import numpy as np
+        from ultralytics.engine.results import Results
+
+        result = Results(
+            np.zeros((64, 64, 3), dtype=np.uint8),
+            path="image.png",
+            names={0: "defect"},
+            boxes=torch.tensor([[16., 16., 48., 48., 0.9, 0.]]),
+        )
+        self.assertEqual(result.plot().shape, (64, 64, 3))
+        self.assertEqual(len(result.cpu().numpy()), 1)
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "prediction.txt"
+            result.save_txt(output, save_conf=True)
+            values = [float(value) for value in output.read_text().split()]
+            self.assertEqual(values[:5], [0., 0.5, 0.5, 0.5, 0.5])
+            self.assertAlmostEqual(values[5], 0.9, places=5)
+
     def test_deconet_builds_and_uses_training_only_auxiliary_branch(self):
         from ultralytics import YOLO
         from ultralytics.nn.modules.head import DetectAuxTGFA

@@ -42,7 +42,6 @@ class Model(nn.Module):
         ckpt_path (str): The path to the checkpoint file.
         overrides (Dict): A dictionary of overrides for model configuration.
         metrics (Dict): The latest training/validation metrics.
-        session (HUBTrainingSession): The Ultralytics HUB session, if applicable.
         task (str): The type of task the model is intended for.
         model_name (str): The name of the model.
 
@@ -58,7 +57,6 @@ class Model(nn.Module):
         fuse: Fuses Conv2d and BatchNorm2d layers for optimized inference.
         predict: Performs object detection predictions.
         val: Validates the model on a dataset.
-        export: Exports the model to different formats.
         train: Trains the model on a dataset.
         _apply: Applies a function to the model's tensors.
         add_callback: Adds a callback function for an event.
@@ -114,7 +112,6 @@ class Model(nn.Module):
         self.ckpt_path = None
         self.overrides = {}  # overrides for trainer object
         self.metrics = None  # validation/training metrics
-        self.session = None  # HUB session
         self.task = task  # task type
         model = str(model).strip()
 
@@ -532,54 +529,6 @@ class Model(nn.Module):
         return validator.metrics
 
 
-    def export(
-        self,
-        **kwargs: Any,
-    ) -> str:
-        """
-        Exports the model to a different format suitable for deployment.
-
-        This method facilitates the export of the model to various formats (e.g., ONNX, TorchScript) for deployment
-        purposes. It uses the 'Exporter' class for the export process, combining model-specific overrides, method
-        defaults, and any additional arguments provided.
-
-        Args:
-            **kwargs: Arbitrary keyword arguments to customize the export process. These are combined with
-                the model's overrides and method defaults. Common arguments include:
-                format (str): Export format (e.g., 'onnx', 'engine', 'coreml').
-                half (bool): Export model in half-precision.
-                int8 (bool): Export model in int8 precision.
-                device (str): Device to run the export on.
-                workspace (int): Maximum memory workspace size for TensorRT engines.
-                nms (bool): Add Non-Maximum Suppression (NMS) module to model.
-                simplify (bool): Simplify ONNX model.
-
-        Returns:
-            (str): The path to the exported model file.
-
-        Raises:
-            AssertionError: If the model is not a PyTorch model.
-            ValueError: If an unsupported export format is specified.
-            RuntimeError: If the export process fails due to errors.
-
-        Examples:
-            >>> model = YOLO("yolo11n.pt")
-            >>> model.export(format="onnx", dynamic=True, simplify=True)
-            'path/to/exported/model.onnx'
-        """
-        self._check_is_pytorch_model()
-        from .exporter import Exporter
-
-        custom = {
-            "imgsz": self.model.args["imgsz"],
-            "batch": 1,
-            "data": None,
-            "device": None,  # reset to avoid multi-GPU errors
-            "verbose": False,
-        }  # method defaults
-        args = {**self.overrides, **custom, **kwargs, "mode": "export"}  # highest priority args on the right
-        return Exporter(overrides=args, _callbacks=self.callbacks)(model=self.model)
-
     def train(
         self,
         trainer=None,
@@ -622,13 +571,6 @@ class Model(nn.Module):
             >>> results = model.train(data="coco8.yaml", epochs=3)
         """
         self._check_is_pytorch_model()
-        if hasattr(self.session, "model") and self.session.model.id:  # Ultralytics HUB session with loaded model
-            if any(kwargs):
-                LOGGER.warning("WARNING ⚠️ using HUB training arguments, ignoring local training arguments.")
-            kwargs = self.session.train_args  # overwrite kwargs
-
-        checks.check_pip_update_available()
-
         overrides = yaml_load(checks.check_yaml(kwargs["cfg"])) if kwargs.get("cfg") else self.overrides
         custom = {
             # NOTE: handle the case when 'cfg' includes 'data'.
@@ -645,7 +587,6 @@ class Model(nn.Module):
             self.trainer.model = self.trainer.get_model(weights=self.model if self.ckpt else None, cfg=self.model.yaml)
             self.model = self.trainer.model
 
-        self.trainer.hub_session = self.session  # attach optional HUB session
         self.trainer.train()
         # Update model and cfg after training
         if RANK in {-1, 0}:

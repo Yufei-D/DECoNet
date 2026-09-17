@@ -78,7 +78,7 @@ HELP_MSG = """
             yolo TASK MODE ARGS
 
             Where   TASK (optional) is one of [detect, segment, classify, pose, obb]
-                    MODE (required) is one of [train, val, predict, export]
+                    MODE (required) is one of [train, val, predict]
                     ARGS (optional) are any number of custom "arg=value" pairs like "imgsz=320" that override defaults.
                         See all ARGS at https://docs.ultralytics.com/usage/cfg or with "yolo cfg"
 
@@ -985,77 +985,6 @@ def threaded(func):
     return wrapper
 
 
-def set_sentry():
-    """
-    Initialize the Sentry SDK for error tracking and reporting. Only used if sentry_sdk package is installed and
-    sync=True in settings. Run 'yolo settings' to see and update settings.
-
-    Conditions required to send errors (ALL conditions must be met or no errors will be reported):
-        - sentry_sdk package is installed
-        - sync=True in YOLO settings
-        - pytest is not running
-        - running in a pip package installation
-        - running in a non-git directory
-        - running with rank -1 or 0
-        - online environment
-        - CLI used to run package (checked with 'yolo' as the name of the main CLI command)
-
-    The function also configures Sentry SDK to ignore KeyboardInterrupt and FileNotFoundError exceptions and to exclude
-    events with 'out of memory' in their exception message.
-
-    Additionally, the function sets custom tags and user information for Sentry events.
-    """
-    if (
-        not SETTINGS["sync"]
-        or RANK not in {-1, 0}
-        or Path(ARGV[0]).name != "yolo"
-        or TESTS_RUNNING
-        or not ONLINE
-        or not IS_PIP_PACKAGE
-        or IS_GIT_DIR
-    ):
-        return
-    # If sentry_sdk package is not installed then return and do not use Sentry
-    try:
-        import sentry_sdk  # noqa
-    except ImportError:
-        return
-
-    def before_send(event, hint):
-        """
-        Modify the event before sending it to Sentry based on specific exception types and messages.
-
-        Args:
-            event (dict): The event dictionary containing information about the error.
-            hint (dict): A dictionary containing additional information about the error.
-
-        Returns:
-            dict: The modified event or None if the event should not be sent to Sentry.
-        """
-        if "exc_info" in hint:
-            exc_type, exc_value, _ = hint["exc_info"]
-            if exc_type in {KeyboardInterrupt, FileNotFoundError} or "out of memory" in str(exc_value):
-                return None  # do not send event
-
-        event["tags"] = {
-            "sys_argv": ARGV[0],
-            "sys_argv_name": Path(ARGV[0]).name,
-            "install": "git" if IS_GIT_DIR else "pip" if IS_PIP_PACKAGE else "other",
-            "os": ENVIRONMENT,
-        }
-        return event
-
-    sentry_sdk.init(
-        dsn="https://888e5a0778212e1d0314c37d4b9aae5d@o4504521589325824.ingest.us.sentry.io/4504521592406016",
-        debug=False,
-        auto_enabling_integrations=False,
-        traces_sample_rate=1.0,
-        release=__version__,
-        environment="runpod" if is_runpod() else "production",
-        before_send=before_send,
-        ignore_errors=[KeyboardInterrupt, FileNotFoundError],
-    )
-    sentry_sdk.set_user({"id": SETTINGS["uuid"]})  # SHA-256 anonymized UUID hash
 
 
 class JSONDict(dict):
@@ -1151,114 +1080,6 @@ class JSONDict(dict):
             self._save()
 
 
-class SettingsManager(JSONDict):
-    """
-    SettingsManager class for managing and persisting Ultralytics settings.
-
-    This class extends JSONDict to provide JSON persistence for settings, ensuring thread-safe operations and default
-    values. It validates settings on initialization and provides methods to update or reset settings.
-
-    Attributes:
-        file (Path): The path to the JSON file used for persistence.
-        version (str): The version of the settings schema.
-        defaults (Dict): A dictionary containing default settings.
-        help_msg (str): A help message for users on how to view and update settings.
-
-    Methods:
-        _validate_settings: Validates the current settings and resets if necessary.
-        update: Updates settings, validating keys and types.
-        reset: Resets the settings to default and saves them.
-
-    Examples:
-        Initialize and update settings:
-        >>> settings = SettingsManager()
-        >>> settings.update(runs_dir="/new/runs/dir")
-        >>> print(settings["runs_dir"])
-        /new/runs/dir
-    """
-
-    def __init__(self, file=SETTINGS_FILE, version="0.0.6"):
-        """Initializes the SettingsManager with default settings and loads user settings."""
-        import hashlib
-
-        from ultralytics.utils.torch_utils import torch_distributed_zero_first
-
-        root = GIT_DIR or Path()
-        datasets_root = (root.parent if GIT_DIR and is_dir_writeable(root.parent) else root).resolve()
-
-        self.file = Path(file)
-        self.version = version
-        self.defaults = {
-            "settings_version": version,  # Settings schema version
-            "datasets_dir": str(datasets_root / "datasets"),  # Datasets directory
-            "weights_dir": str(root / "weights"),  # Model weights directory
-            "runs_dir": str(root / "runs"),  # Experiment runs directory
-            "uuid": hashlib.sha256(str(uuid.getnode()).encode()).hexdigest(),  # SHA-256 anonymized UUID hash
-            "sync": True,  # Enable synchronization
-            "api_key": "",  # Ultralytics API Key
-            "openai_api_key": "",  # OpenAI API Key
-            "hub": True,  # Ultralytics HUB integration
-            "vscode_msg": True,  # VSCode messaging
-        }
-
-        self.help_msg = (
-            f"\nView Ultralytics Settings with 'yolo settings' or at '{self.file}'"
-            "\nUpdate Settings with 'yolo settings key=value', i.e. 'yolo settings runs_dir=path/to/dir'. "
-            "For help see https://docs.ultralytics.com/quickstart/#ultralytics-settings."
-        )
-
-        with torch_distributed_zero_first(RANK):
-            super().__init__(self.file)
-
-            if not self.file.exists() or not self:  # Check if file doesn't exist or is empty
-                LOGGER.info(f"Creating new Ultralytics Settings v{version} file ✅ {self.help_msg}")
-                self.reset()
-
-            self._validate_settings()
-
-    def _validate_settings(self):
-        """Validate the current settings and reset if necessary."""
-        correct_keys = set(self.keys()) == set(self.defaults.keys())
-        correct_types = all(isinstance(self.get(k), type(v)) for k, v in self.defaults.items())
-        correct_version = self.get("settings_version", "") == self.version
-
-        if not (correct_keys and correct_types and correct_version):
-            LOGGER.warning(
-                "WARNING ⚠️ Ultralytics settings reset to default values. This may be due to a possible problem "
-                f"with your settings or a recent ultralytics package update. {self.help_msg}"
-            )
-            self.reset()
-
-        if self.get("datasets_dir") == self.get("runs_dir"):
-            LOGGER.warning(
-                f"WARNING ⚠️ Ultralytics setting 'datasets_dir: {self.get('datasets_dir')}' "
-                f"must be different than 'runs_dir: {self.get('runs_dir')}'. "
-                f"Please change one to avoid possible issues during training. {self.help_msg}"
-            )
-
-    def __setitem__(self, key, value):
-        """Updates one key: value pair."""
-        self.update({key: value})
-
-    def update(self, *args, **kwargs):
-        """Updates settings, validating keys and types."""
-        for arg in args:
-            if isinstance(arg, dict):
-                kwargs.update(arg)
-        for k, v in kwargs.items():
-            if k not in self.defaults:
-                raise KeyError(f"No Ultralytics setting '{k}'. {self.help_msg}")
-            t = type(self.defaults[k])
-            if not isinstance(v, t):
-                raise TypeError(
-                    f"Ultralytics setting '{k}' must be '{t.__name__}' type, not '{type(v).__name__}'. {self.help_msg}"
-                )
-        super().update(*args, **kwargs)
-
-    def reset(self):
-        """Resets the settings to default and saves them."""
-        self.clear()
-        self.update(self.defaults)
 
 
 def deprecation_warn(arg, new_arg=None):
@@ -1293,7 +1114,7 @@ def vscode_msg(ext="ultralytics.ultralytics-snippets") -> str:
 
 # Check first-install steps
 PREFIX = colorstr("Ultralytics: ")
-SETTINGS = SettingsManager()  # initialize settings
+SETTINGS = {key: str(ROOT.parent / folder) for key, folder in (("datasets_dir", "datasets"), ("weights_dir", "weights"), ("runs_dir", "runs"))}
 PERSISTENT_CACHE = JSONDict(USER_CONFIG_DIR / "persistent_cache.json")  # initialize persistent cache
 DATASETS_DIR = Path(SETTINGS["datasets_dir"])  # global datasets directory
 WEIGHTS_DIR = Path(SETTINGS["weights_dir"])  # global weights directory
@@ -1310,7 +1131,6 @@ ENVIRONMENT = (
     else platform.system()
 )
 TESTS_RUNNING = is_pytest_running() or is_github_action_running()
-set_sentry()
 
 # Apply monkey patches
 from ultralytics.utils.patches import imread, imshow, imwrite, torch_load, torch_save
