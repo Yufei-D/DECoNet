@@ -1,6 +1,6 @@
 # DECoNet
 
-Official implementation workspace for the manuscript **“DECoNet: Dual-Evidence Collaborative Network for Robust Photovoltaic EL Defect Detection under Missing Annotations”** (ICASSP 2027 submission version dated 2026-09-16).
+Official implementation of **DECoNet: Dual-Evidence Collaborative Network for Robust Photovoltaic EL Defect Detection under Missing Annotations**.
 
 This repository contains the implementation and evaluation code needed by that manuscript, together with its method overview and architecture figures. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
 
@@ -54,7 +54,7 @@ The paper reports **95.65 mAP50**, **70.85 mAP50:95**, **93.29 precision**, and 
 Python 3.11 and a CUDA-enabled PyTorch environment are recommended.
 
 ```bash
-git clone <private-repository-url>
+git clone https://github.com/Yufei-D/DECoNet.git
 cd DECoNet
 pip install -r requirements.txt
 ```
