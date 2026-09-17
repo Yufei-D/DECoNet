@@ -13,7 +13,8 @@ import torch
 from ultralytics.utils import LOCAL_RANK, NUM_THREADS, TQDM
 from ultralytics.utils.ops import resample_segments
 
-from .augment import Compose, Format, Instances, LetterBox, v8_transforms
+from .preprocess import Compose, Format, LetterBox
+from ultralytics.utils.instance import Instances
 from .base import BaseDataset
 from .m_heatmap_utils import load_m_heatmap_for_image
 from .utils import HELP_URL, LOGGER, get_hash, img2label_paths, load_dataset_cache_file, save_dataset_cache_file, verify_image_label
@@ -184,12 +185,7 @@ class YOLODataset(BaseDataset):
 
     def build_transforms(self, hyp=None):
         """Builds and appends transforms to the list."""
-        if self.augment:
-            hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
-            hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
-            transforms = v8_transforms(self, self.imgsz, hyp)
-        else:
-            transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
+        transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
         transforms.append(
             Format(
                 bbox_format="xywh",
@@ -200,17 +196,10 @@ class YOLODataset(BaseDataset):
                 batch_idx=True,
                 mask_ratio=hyp.mask_ratio,
                 mask_overlap=hyp.overlap_mask,
-                bgr=hyp.bgr if self.augment else 0.0,  # only affect training.
             )
         )
         return transforms
 
-    def close_mosaic(self, hyp):
-        """Sets mosaic, copy_paste and mixup options to 0.0 and builds transformations."""
-        hyp.mosaic = 0.0  # set mosaic ratio=0.0
-        hyp.copy_paste = 0.0  # keep the same behavior as previous v8 close-mosaic
-        hyp.mixup = 0.0  # keep the same behavior as previous v8 close-mosaic
-        self.transforms = self.build_transforms(hyp)
 
     def update_labels_info(self, label):
         """

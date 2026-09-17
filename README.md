@@ -2,7 +2,7 @@
 
 Official implementation of **DECoNet: Dual-Evidence Collaborative Network for Robust Photovoltaic EL Defect Detection under Missing Annotations**.
 
-This repository contains the implementation and evaluation code needed by that manuscript, together with its method overview and architecture figures. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
+Implementation of DECoNet, including normal-reference construction, model training, and evaluation.
 
 ## Method overview
 
@@ -59,29 +59,9 @@ FlashAttention is optional; the included YOLOv12 attention code falls back to Py
 
 The official [DINOv3 ViT-B/16 checkpoint](https://huggingface.co/facebook/dinov3-vitb16-pretrain-lvd1689m) is access-gated. Accept Meta's model terms on Hugging Face and authenticate locally before running the prototype or M-map scripts.
 
-## Dataset layout
-
-The dataset is not included. Copy `configs/pvelad.example.yaml`, replace its root path, and arrange each split in YOLO detection format:
-
-```text
-augmented-PVEL-AD/
-├── train/
-│   ├── images/
-│   ├── labels/
-│   └── M_heatmaps/       # generated .npy files
-├── val/
-│   ├── images/
-│   └── labels/
-└── test/
-    ├── images/
-    └── labels/
-```
-
-The paper uses disjoint training, validation, and test partitions. M-maps are needed only for detector training.
-
 ## Reproduction
 
-Build the `K=1024` normal-prototype bank from the paper’s 11,353 defect-free training-pool images:
+Build a `K=1024` normal-prototype bank from normal reference images:
 
 ```bash
 python scripts/build_normal_prototypes.py \
@@ -93,15 +73,15 @@ Generate fixed M-maps for the detector training images:
 
 ```bash
 python scripts/precompute_m_maps.py \
-  --images /path/to/augmented-PVEL-AD/train/images \
+  --images /path/to/data/train/images \
   --prototype-bank /path/to/generated/dinov3_normal_k1024.pt \
-  --output-dir /path/to/augmented-PVEL-AD/train/M_heatmaps
+  --output-dir /path/to/data/train/M_heatmaps
 ```
 
-Train from the official YOLOv12n weights (the default). Matching backbone, neck, and main-head tensors are transferred; DECoNet-specific tensors without a compatible source are initialized by the model definition.
+Provide your image paths and class names in a YOLO-format data YAML. Train from the official YOLOv12n weights (the default). Matching backbone, neck, and main-head tensors are transferred; DECoNet-specific tensors without a compatible source are initialized by the model definition.
 
 ```bash
-python scripts/train.py --data configs/pvelad.local.yaml --device 0
+python scripts/train.py --data /path/to/data.yaml --device 0
 ```
 
 Evaluate validation or test data and export both overall JSON and per-class CSV metrics:
@@ -109,7 +89,7 @@ Evaluate validation or test data and export both overall JSON and per-class CSV 
 ```bash
 python scripts/evaluate.py \
   --weights /path/to/best.pt \
-  --data configs/pvelad.local.yaml \
+  --data /path/to/data.yaml \
   --split test
 ```
 
@@ -119,17 +99,6 @@ Recalculate inference parameters and GFLOPs without fusing the model:
 python scripts/model_stats.py --weights /path/to/best.pt --imgsz 640
 ```
 
-Generate the class-wise additional box-removal splits used by the paper’s robustness study:
-
-```bash
-python scripts/make_missing_labels.py \
-  --labels /path/to/augmented-PVEL-AD/train/labels \
-  --output-root /path/to/augmented-PVEL-AD/train \
-  --rates 30 50 70 90
-```
-
-Only training boxes are removed; validation and test annotations must remain unchanged.
-
 ## Repository map
 
 - `docs/figures/`: the method overview and architecture figures (Figures 1 and 2).
@@ -137,9 +106,5 @@ Only training boxes are removed; validation and test annotations must remain unc
 - `ultralytics/nn/modules/wscdown.py`: WSConv.
 - `ultralytics/nn/modules/tgfa.py`: TGFA.
 - `ultralytics/utils/deconet_loss.py`: TMG and auxiliary loss.
-- `scripts/`: prototype/M-map preparation, training, evaluation, statistics, and missing-label protocols.
+- `scripts/`: normal-prototype and M-map computation, training, evaluation, and model statistics.
 - `tests/test_deconet.py`: architecture, training-only branch, paper-default, and artifact checks.
-
-## Artifact policy
-
-Git ignores model/prototype files (`.pt`, `.pth`, `.ckpt`, `.safetensors`), generated maps (`.npy`, `.npz`), datasets, and run directories. No such artifact is part of this release.

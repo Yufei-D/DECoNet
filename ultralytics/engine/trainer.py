@@ -285,9 +285,6 @@ class BaseTrainer:
             f"Logging results to {colorstr('bold', self.save_dir)}\n"
             f"Starting training for " + (f"{self.args.time} hours..." if self.args.time else f"{self.epochs} epochs...")
         )
-        if self.args.close_mosaic:
-            base_idx = (self.epochs - self.args.close_mosaic) * nb
-            self.plot_idx.extend([base_idx, base_idx + 1, base_idx + 2])
         epoch = self.start_epoch
         self.optimizer.zero_grad()  # zero any resumed gradients to ensure stability on train start
         while True:
@@ -300,9 +297,6 @@ class BaseTrainer:
             self.model.train()
             pbar = enumerate(self.train_loader)
             # Update dataloader attributes (optional)
-            if epoch == (self.epochs - self.args.close_mosaic):
-                self._close_dataloader_mosaic()
-                self.train_loader.reset()
 
             if RANK in {-1, 0}:
                 LOGGER.info(self.progress_string())
@@ -471,8 +465,6 @@ class BaseTrainer:
             self.best.write_bytes(serialized_ckpt)  # save best.pt
         if (self.save_period > 0) and (self.epoch % self.save_period == 0):
             (self.wdir / f"epoch{self.epoch}.pt").write_bytes(serialized_ckpt)  # save epoch, i.e. 'epoch3.pt'
-        # if self.args.close_mosaic and self.epoch == (self.epochs - self.args.close_mosaic - 1):
-        #    (self.wdir / "last_mosaic.pt").write_bytes(serialized_ckpt)  # save mosaic checkpoint
 
     def get_dataset(self):
         """
@@ -631,7 +623,6 @@ class BaseTrainer:
                     "imgsz",
                     "batch",
                     "device",
-                    "close_mosaic",
                 ):  # allow arg updates to reduce memory or update device on resume
                     if k in overrides:
                         setattr(self.args, k, overrides[k])
@@ -667,16 +658,7 @@ class BaseTrainer:
             self.epochs += ckpt["epoch"]  # finetune additional epochs
         self.best_fitness = best_fitness
         self.start_epoch = start_epoch
-        if start_epoch > (self.epochs - self.args.close_mosaic):
-            self._close_dataloader_mosaic()
 
-    def _close_dataloader_mosaic(self):
-        """Update dataloaders to stop using mosaic augmentation."""
-        if hasattr(self.train_loader.dataset, "mosaic"):
-            self.train_loader.dataset.mosaic = False
-        if hasattr(self.train_loader.dataset, "close_mosaic"):
-            LOGGER.info("Closing dataloader mosaic")
-            self.train_loader.dataset.close_mosaic(hyp=copy(self.args))
 
     def build_optimizer(self, model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5):
         """

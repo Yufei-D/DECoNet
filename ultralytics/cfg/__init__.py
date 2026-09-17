@@ -16,7 +16,7 @@ from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, RANK, ROOT, RUNS_DIR, TE
 # Define valid tasks and modes
 MODES = {"train", "val", "predict"}
 TASKS = {"detect"}
-TASK2DATA = {"detect": "configs/pvelad.example.yaml"}
+TASK2DATA = {"detect": None}
 TASK2MODEL = {"detect": "configs/models/yolo12n-deconet.yaml"}
 TASK2METRIC = {"detect": "metrics/mAP50-95(B)"}
 
@@ -27,8 +27,6 @@ CFG_FLOAT_KEYS = {  # integer or float arguments, i.e. x=2 and x=2.0
     "box",
     "cls",
     "dfl",
-    "degrees",
-    "shear",
     "time",
     "workspace",
     "batch",
@@ -41,18 +39,6 @@ CFG_FRACTION_KEYS = {  # fractional float arguments with 0.0<=values<=1.0
     "weight_decay",
     "warmup_momentum",
     "warmup_bias_lr",
-    "hsv_h",
-    "hsv_s",
-    "hsv_v",
-    "translate",
-    "scale",
-    "perspective",
-    "flipud",
-    "fliplr",
-    "bgr",
-    "mosaic",
-    "mixup",
-    "copy_paste",
     "conf",
     "iou",
     "fraction",
@@ -62,7 +48,6 @@ CFG_INT_KEYS = {  # integer-only arguments
     "patience",
     "workers",
     "seed",
-    "close_mosaic",
     "mask_ratio",
     "max_det",
     "vid_stride",
@@ -104,7 +89,6 @@ CFG_BOOL_KEYS = {  # boolean-only arguments
     "simplify",
     "nms",
     "profile",
-    "multi_scale",
 }
 
 

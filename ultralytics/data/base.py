@@ -26,8 +26,7 @@ class BaseDataset(Dataset):
         img_path (str): Path to the folder containing images.
         imgsz (int, optional): Image size. Defaults to 640.
         cache (bool, optional): Cache images to RAM or disk during training. Defaults to False.
-        augment (bool, optional): If True, data augmentation is applied. Defaults to True.
-        hyp (dict, optional): Hyperparameters to apply data augmentation. Defaults to None.
+        hyp (dict, optional): Preprocessing configuration. Defaults to None.
         prefix (str, optional): Prefix to print in log messages. Defaults to ''.
         rect (bool, optional): If True, rectangular training is used. Defaults to False.
         batch_size (int, optional): Size of batches. Defaults to None.
@@ -51,7 +50,6 @@ class BaseDataset(Dataset):
         img_path,
         imgsz=640,
         cache=False,
-        augment=True,
         hyp=DEFAULT_CFG,
         prefix="",
         rect=False,
@@ -66,7 +64,6 @@ class BaseDataset(Dataset):
         super().__init__()
         self.img_path = img_path
         self.imgsz = imgsz
-        self.augment = augment
         self.single_cls = single_cls
         self.prefix = prefix
         self.fraction = fraction
@@ -82,9 +79,6 @@ class BaseDataset(Dataset):
             assert self.batch_size is not None
             self.set_rectangle()
 
-        # Buffer thread for mosaic images
-        self.buffer = []  # buffer size = batch size
-        self.max_buffer_length = min((self.ni, self.batch_size * 8, 1000)) if self.augment else 0
 
         # Cache images (options are cache = True, False, None, "ram", "disk")
         self.ims, self.im_hw0, self.im_hw = [None] * self.ni, [None] * self.ni, [None] * self.ni
@@ -173,14 +167,6 @@ class BaseDataset(Dataset):
             elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
                 im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
 
-            # Add to buffer if training with augmentations
-            if self.augment:
-                self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
-                self.buffer.append(i)
-                if 1 < len(self.buffer) >= self.max_buffer_length:  # prevent empty buffer
-                    j = self.buffer.pop(0)
-                    if self.cache != "ram":
-                        self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
 
             return im, (h0, w0), im.shape[:2]
 
@@ -309,20 +295,9 @@ class BaseDataset(Dataset):
         return label
 
     def build_transforms(self, hyp=None):
-        """
-        Users can customize augmentations here.
-
-        Example:
-            ```python
-            if self.augment:
-                # Training transforms
-                return Compose([])
-            else:
-                # Val transforms
-                return Compose([])
-            ```
-        """
+        """Construct the image and annotation preprocessing pipeline."""
         raise NotImplementedError
+
 
     def get_labels(self):
         """
