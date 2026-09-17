@@ -45,8 +45,6 @@ The detector is based on YOLOv12n at upstream commit `d3cbe10`. The inherited co
 | PLR target weights | 0.75 × confidence; 0.50 × confidence |
 | SLM coefficient / auxiliary weight | 0.10 / 0.25 |
 
-The paper reports **95.65 mAP50**, **70.85 mAP50:95**, **93.29 precision**, and **92.14 recall** on augmented PVEL-AD. Its inference graph has **2.28M parameters** and **5.67 GFLOPs** at 640 × 640, using two FLOPs per multiply-accumulate.
-
 ## Installation
 
 Python 3.11 and a CUDA-enabled PyTorch environment are recommended.
