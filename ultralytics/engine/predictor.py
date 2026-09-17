@@ -111,7 +111,6 @@ class BasePredictor:
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
         self.txt_path = None
         self._lock = threading.Lock()  # for automatic thread-safe inference
-        callbacks.add_integration_callbacks(self)
 
     def preprocess(self, im):
         """

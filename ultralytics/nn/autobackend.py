@@ -124,9 +124,8 @@ class AutoBackend(nn.Module):
             mnn,
             ncnn,
             imx,
-            triton,
         ) = self._model_type(w)
-        fp16 &= pt or jit or onnx or xml or engine or nn_module or triton  # FP16
+        fp16 &= pt or jit or onnx or xml or engine or nn_module  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
         stride = 32  # default stride
         model, metadata, task = None, None, None
@@ -138,7 +137,7 @@ class AutoBackend(nn.Module):
             cuda = False
 
         # Download if not local
-        if not (pt or triton or nn_module):
+        if not (pt or nn_module):
             w = attempt_download_asset(w)
 
         # In-memory PyTorch model
@@ -453,14 +452,6 @@ class AutoBackend(nn.Module):
             net.load_model(str(w.with_suffix(".bin")))
             metadata = w.parent / "metadata.yaml"
 
-        # NVIDIA Triton Inference Server
-        elif triton:
-            check_requirements("tritonclient[all]")
-            from ultralytics.utils.triton import TritonRemoteModel
-
-            model = TritonRemoteModel(w)
-            metadata = model.metadata
-
         # Any other format (unsupported)
         else:
             from ultralytics.engine.exporter import export_formats
@@ -485,7 +476,7 @@ class AutoBackend(nn.Module):
             imgsz = metadata["imgsz"]
             names = metadata["names"]
             kpt_shape = metadata.get("kpt_shape")
-        elif not (pt or triton or nn_module):
+        elif not (pt or nn_module):
             LOGGER.warning(f"WARNING ⚠️ Metadata not found for 'model={weights}'")
 
         # Check names
@@ -642,11 +633,6 @@ class AutoBackend(nn.Module):
                 # WARNING: 'output_names' sorted as a temporary fix for https://github.com/pnnx/pnnx/issues/130
                 y = [np.array(ex.extract(x)[1])[None] for x in sorted(self.net.output_names())]
 
-        # NVIDIA Triton Inference Server
-        elif self.triton:
-            im = im.cpu().numpy()  # torch to numpy
-            y = self.model(im)
-
         # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
         else:
             im = im.cpu().numpy()
@@ -724,8 +710,8 @@ class AutoBackend(nn.Module):
         """
         import torchvision  # noqa (import here so torchvision import time not recorded in postprocess time)
 
-        warmup_types = self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb, self.triton, self.nn_module
-        if any(warmup_types) and (self.device.type != "cpu" or self.triton):
+        warmup_types = self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb, self.nn_module
+        if any(warmup_types) and (self.device.type != "cpu"):
             im = torch.empty(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
             for _ in range(2 if self.jit else 1):
                 self.forward(im)  # warmup
@@ -752,12 +738,4 @@ class AutoBackend(nn.Module):
         types = [s in name for s in sf]
         types[5] |= name.endswith(".mlmodel")  # retain support for older Apple CoreML *.mlmodel formats
         types[8] &= not types[9]  # tflite &= not edgetpu
-        if any(types):
-            triton = False
-        else:
-            from urllib.parse import urlsplit
-
-            url = urlsplit(p)
-            triton = bool(url.netloc) and bool(url.path) and url.scheme in {"http", "grpc"}
-
-        return types + [triton]
+        return types

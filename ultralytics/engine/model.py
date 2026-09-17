@@ -30,8 +30,7 @@ class Model(nn.Module):
     A base class for implementing YOLO models, unifying APIs across different model types.
 
     This class provides a common interface for various operations related to YOLO models, such as training,
-    validation, prediction, exporting, and benchmarking. It handles different types of models, including those
-    loaded from local files, Ultralytics HUB, or Triton Server.
+    validation, prediction, and exporting using model configurations and checkpoints.
 
     Attributes:
         callbacks (Dict): A dictionary of callback functions for various events during model operations.
@@ -58,12 +57,9 @@ class Model(nn.Module):
         info: Logs or returns information about the model.
         fuse: Fuses Conv2d and BatchNorm2d layers for optimized inference.
         predict: Performs object detection predictions.
-        track: Performs object tracking.
         val: Validates the model on a dataset.
-        benchmark: Benchmarks the model on various export formats.
         export: Exports the model to different formats.
         train: Trains the model on a dataset.
-        tune: Performs hyperparameter tuning.
         _apply: Applies a function to the model's tensors.
         add_callback: Adds a callback function for an event.
         clear_callback: Clears all callbacks for an event.
@@ -88,13 +84,13 @@ class Model(nn.Module):
         Initializes a new instance of the YOLO model class.
 
         This constructor sets up the model based on the provided model path or name. It handles various types of
-        model sources, including local files, Ultralytics HUB models, and Triton Server models. The method
+        model configurations and checkpoint files. The method
         initializes several important attributes of the model and prepares it for operations like training,
         prediction, or export.
 
         Args:
-            model (Union[str, Path]): Path or name of the model to load or create. Can be a local file path, a
-                model name from Ultralytics HUB, or a Triton Server model.
+            model (Union[str, Path]): Path or name of the model to load or create. Can be a YAML configuration
+                or a PyTorch checkpoint.
             task (str | None): The task type associated with the YOLO model, specifying its application domain.
             verbose (bool): If True, enables verbose output during the model's initialization and subsequent
                 operations.
@@ -102,7 +98,6 @@ class Model(nn.Module):
         Raises:
             FileNotFoundError: If the specified model file does not exist or is inaccessible.
             ValueError: If the model file or configuration is invalid or unsupported.
-            ImportError: If required dependencies for specific model types (like HUB SDK) are not installed.
 
         Examples:
             >>> model = Model("yolo11n.pt")
@@ -122,12 +117,6 @@ class Model(nn.Module):
         self.session = None  # HUB session
         self.task = task  # task type
         model = str(model).strip()
-
-        # Check if Triton Server model
-        if self.is_triton_model(model):
-            self.model_name = self.model = model
-            self.overrides["task"] = task or "detect"  # set `task=detect` if not explicitly set
-            return
 
         # Load or create new YOLO model
         if Path(model).suffix in {".yaml", ".yml"}:
@@ -169,30 +158,6 @@ class Model(nn.Module):
         """
         return self.predict(source, stream, **kwargs)
 
-    @staticmethod
-    def is_triton_model(model: str) -> bool:
-        """
-        Checks if the given model string is a Triton Server URL.
-
-        This static method determines whether the provided model string represents a valid Triton Server URL by
-        parsing its components using urllib.parse.urlsplit().
-
-        Args:
-            model (str): The model string to be checked.
-
-        Returns:
-            (bool): True if the model string is a valid Triton Server URL, False otherwise.
-
-        Examples:
-            >>> Model.is_triton_model("http://localhost:8000/v2/models/yolov8n")
-            True
-            >>> Model.is_triton_model("yolo11n.pt")
-            False
-        """
-        from urllib.parse import urlsplit
-
-        url = urlsplit(model)
-        return url.netloc and url.path and url.scheme in {"http", "grpc"}
 
     @staticmethod
     def is_hub_model(model: str) -> bool:
@@ -566,54 +531,6 @@ class Model(nn.Module):
         self.metrics = validator.metrics
         return validator.metrics
 
-    def benchmark(
-        self,
-        **kwargs: Any,
-    ):
-        """
-        Benchmarks the model across various export formats to evaluate performance.
-
-        This method assesses the model's performance in different export formats, such as ONNX, TorchScript, etc.
-        It uses the 'benchmark' function from the ultralytics.utils.benchmarks module. The benchmarking is
-        configured using a combination of default configuration values, model-specific arguments, method-specific
-        defaults, and any additional user-provided keyword arguments.
-
-        Args:
-            **kwargs: Arbitrary keyword arguments to customize the benchmarking process. These are combined with
-                default configurations, model-specific arguments, and method defaults. Common options include:
-                - data (str): Path to the dataset for benchmarking.
-                - imgsz (int | List[int]): Image size for benchmarking.
-                - half (bool): Whether to use half-precision (FP16) mode.
-                - int8 (bool): Whether to use int8 precision mode.
-                - device (str): Device to run the benchmark on (e.g., 'cpu', 'cuda').
-                - verbose (bool): Whether to print detailed benchmark information.
-
-        Returns:
-            (Dict): A dictionary containing the results of the benchmarking process, including metrics for
-                different export formats.
-
-        Raises:
-            AssertionError: If the model is not a PyTorch model.
-
-        Examples:
-            >>> model = YOLO("yolo11n.pt")
-            >>> results = model.benchmark(data="coco8.yaml", imgsz=640, half=True)
-            >>> print(results)
-        """
-        self._check_is_pytorch_model()
-        from ultralytics.utils.benchmarks import benchmark
-
-        custom = {"verbose": False}  # method defaults
-        args = {**DEFAULT_CFG_DICT, **self.model.args, **custom, **kwargs, "mode": "benchmark"}
-        return benchmark(
-            model=self,
-            data=kwargs.get("data"),  # if no 'data' argument passed set data=None for default datasets
-            imgsz=args["imgsz"],
-            half=args["half"],
-            int8=args["int8"],
-            device=args["device"],
-            verbose=kwargs.get("verbose"),
-        )
 
     def export(
         self,
@@ -738,49 +655,6 @@ class Model(nn.Module):
             self.metrics = getattr(self.trainer.validator, "metrics", None)  # TODO: no metrics returned by DDP
         return self.metrics
 
-    def tune(
-        self,
-        use_ray=False,
-        iterations=10,
-        *args: Any,
-        **kwargs: Any,
-    ):
-        """
-        Conducts hyperparameter tuning for the model, with an option to use Ray Tune.
-
-        This method supports two modes of hyperparameter tuning: using Ray Tune or a custom tuning method.
-        When Ray Tune is enabled, it leverages the 'run_ray_tune' function from the ultralytics.utils.tuner module.
-        Otherwise, it uses the internal 'Tuner' class for tuning. The method combines default, overridden, and
-        custom arguments to configure the tuning process.
-
-        Args:
-            use_ray (bool): If True, uses Ray Tune for hyperparameter tuning. Defaults to False.
-            iterations (int): The number of tuning iterations to perform. Defaults to 10.
-            *args: Variable length argument list for additional arguments.
-            **kwargs: Arbitrary keyword arguments. These are combined with the model's overrides and defaults.
-
-        Returns:
-            (Dict): A dictionary containing the results of the hyperparameter search.
-
-        Raises:
-            AssertionError: If the model is not a PyTorch model.
-
-        Examples:
-            >>> model = YOLO("yolo11n.pt")
-            >>> results = model.tune(use_ray=True, iterations=20)
-            >>> print(results)
-        """
-        self._check_is_pytorch_model()
-        if use_ray:
-            from ultralytics.utils.tuner import run_ray_tune
-
-            return run_ray_tune(self, max_samples=iterations, *args, **kwargs)
-        else:
-            from .tuner import Tuner
-
-            custom = {}  # method defaults
-            args = {**self.overrides, **custom, **kwargs, "mode": "train"}  # highest priority args on the right
-            return Tuner(args=args, _callbacks=self.callbacks)(model=self, iterations=iterations)
 
     def _apply(self, fn) -> "Model":
         """

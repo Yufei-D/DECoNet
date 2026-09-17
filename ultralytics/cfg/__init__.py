@@ -47,7 +47,7 @@ SOLUTION_MAP = {
 }
 
 # Define valid tasks and modes
-MODES = {"train", "val", "predict", "export", "track", "benchmark"}
+MODES = {"train", "val", "predict", "export"}
 TASKS = {"detect", "segment", "classify", "pose", "obb"}
 TASK2DATA = {
     "detect": "coco8.yaml",

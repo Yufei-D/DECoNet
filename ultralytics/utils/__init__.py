@@ -78,7 +78,7 @@ HELP_MSG = """
             yolo TASK MODE ARGS
 
             Where   TASK (optional) is one of [detect, segment, classify, pose, obb]
-                    MODE (required) is one of [train, val, predict, export, track, benchmark]
+                    MODE (required) is one of [train, val, predict, export]
                     ARGS (optional) are any number of custom "arg=value" pairs like "imgsz=320" that override defaults.
                         See all ARGS at https://docs.ultralytics.com/usage/cfg or with "yolo cfg"
 
@@ -1197,15 +1197,7 @@ class SettingsManager(JSONDict):
             "sync": True,  # Enable synchronization
             "api_key": "",  # Ultralytics API Key
             "openai_api_key": "",  # OpenAI API Key
-            "clearml": True,  # ClearML integration
-            "comet": True,  # Comet integration
-            "dvc": True,  # DVC integration
             "hub": True,  # Ultralytics HUB integration
-            "mlflow": True,  # MLflow integration
-            "neptune": True,  # Neptune integration
-            "raytune": True,  # Ray Tune integration
-            "tensorboard": True,  # TensorBoard logging
-            "wandb": False,  # Weights & Biases logging
             "vscode_msg": True,  # VSCode messaging
         }
 

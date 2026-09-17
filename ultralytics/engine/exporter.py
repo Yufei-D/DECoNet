@@ -201,7 +201,6 @@ class Exporter:
             os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"  # must run before TensorBoard callback
 
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
-        callbacks.add_integration_callbacks(self)
 
     def __call__(self, model=None) -> str:
         """Returns list of exported files/dirs after running callbacks."""

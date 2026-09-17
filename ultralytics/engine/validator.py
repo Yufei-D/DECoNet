@@ -122,7 +122,6 @@ class BaseValidator:
         else:
             if str(self.args.model).endswith(".yaml") and model is None:
                 LOGGER.warning("WARNING ⚠️ validating an untrained model YAML will result in 0 mAP.")
-            callbacks.add_integration_callbacks(self)
             model = AutoBackend(
                 weights=model or self.args.model,
                 device=select_device(self.args.device, self.args.batch),
