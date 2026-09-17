@@ -37,7 +37,8 @@ The detector is based on YOLOv12n at upstream commit `d3cbe10`. The inherited co
 | Input size | 640 × 640 |
 | Epochs / batch size | 100 / 64 |
 | Optimizer | AdamW |
-| Initial LR / final factor | 1e-3 / 0.01 |
+| Initial LR / final factor | 1e-4 / 0.01 |
+| LR schedule | Cosine annealing |
 | Momentum / weight decay | 0.937 / 5e-4 |
 | Warm-up / AMP | 5 epochs / enabled |
 | TMG burn-in | 5,000 steps |
