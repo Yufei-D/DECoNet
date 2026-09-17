@@ -4,8 +4,6 @@ Official implementation of **DECoNet: Dual-Evidence Collaborative Network for Ro
 
 This repository contains the implementation and evaluation code needed by that manuscript, together with its method overview and architecture figures. Dataset files, M-maps, prototype banks, experiment outputs, model weights, and the manuscript PDF are intentionally excluded.
 
-The vendored YOLOv12 runtime is limited to the object-detection path required by DECoNet. Unrelated upstream tasks, model-zoo configurations, demos, tracking, HUB integration, sample assets, and solution applications have been removed.
-
 ## Method overview
 
 ![Comparison of conventional teacher-student learning and DECoNet](docs/figures/overview_story.png)
