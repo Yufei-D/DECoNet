@@ -1,5 +1,5 @@
 """
-TGFA: Teacher-Guided Feature Augmentation
+TGFA: Target-Guided Feature Augmentation
 ==========================================
 
 A training-only, target-guided wavelet feature augmentation module for DECoNet.
@@ -84,7 +84,7 @@ class _SelfMaskHead(nn.Module):
 # Main block
 # ===========================================================================
 class TGFABlock(nn.Module):
-    """Provably non-degrading neck module.
+    """Training-only, target-guided high-frequency feature augmentation.
 
     y = x + sigma * m * ReLU(psi(x))
 
