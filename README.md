@@ -63,8 +63,6 @@ The official [DINOv3 ViT-B/16 checkpoint](https://huggingface.co/facebook/dinov3
 
 Our experiments use an augmented version of **PVEL-AD**, introduced by Binyi Su, Zhong Zhou, and Haiyong Chen. Obtain the original dataset from the authors' [official PVEL-AD repository](https://github.com/binyisu/PVEL-AD) and follow its current access instructions and terms of use.
 
-This repository does not redistribute the original dataset, our augmented images and annotations, or the generated normal-prototype bank and M-maps. The scripts below support local prototype construction and M-map generation after obtaining the required images.
-
 Please cite the original dataset paper when using PVEL-AD:
 
 > B. Su, Z. Zhou, and H. Chen, "PVEL-AD: A Large-Scale Open-World Dataset for Photovoltaic Cell Anomaly Detection," *IEEE Transactions on Industrial Informatics*, vol. 19, no. 1, pp. 404–413, 2023. DOI: [10.1109/TII.2022.3162846](https://doi.org/10.1109/TII.2022.3162846).
